@@ -8,7 +8,7 @@ Options and settings
 
 Overview
 --------
-pandas has an options API configure and customize global behavior related to
+pandas has an options API to configure and customize global behavior related to
 :class:`DataFrame` display, data behavior and more.
 
 Options have a full "dotted-style", case-insensitive name (e.g. ``display.max_rows``).
@@ -249,7 +249,7 @@ displayed when calling :meth:`~pandas.DataFrame.info`.
 ``display.max_info_rows``: :meth:`~pandas.DataFrame.info` will usually show null-counts for each column.
 For a large :class:`DataFrame`, this can be quite slow. ``max_info_rows`` and ``max_info_cols``
 limit this null check to the specified rows and columns respectively. The :meth:`~pandas.DataFrame.info`
-keyword argument ``null_counts=True`` will override this.
+keyword argument ``show_counts=True`` will override this.
 
 .. ipython:: python
 

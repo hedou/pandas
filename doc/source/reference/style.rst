@@ -36,11 +36,12 @@ Style application
    :toctree: api/
 
    Styler.apply
-   Styler.applymap
+   Styler.map
    Styler.apply_index
-   Styler.applymap_index
+   Styler.map_index
    Styler.format
    Styler.format_index
+   Styler.format_index_names
    Styler.relabel_index
    Styler.hide
    Styler.concat

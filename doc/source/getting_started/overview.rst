@@ -6,11 +6,11 @@
 Package overview
 ****************
 
-pandas is a `Python <https://www.python.org>`__ package providing fast,
+pandas is a `Python <https://www.python.org>`__ package that provides fast,
 flexible, and expressive data structures designed to make working with
 "relational" or "labeled" data both easy and intuitive. It aims to be the
-fundamental high-level building block for doing practical, **real-world** data
-analysis in Python. Additionally, it has the broader goal of becoming **the
+fundamental high-level building block for Python's practical, **real-world** data
+analysis. Additionally, it seeks to become **the
 most powerful and flexible open source data analysis/manipulation tool
 available in any language**. It is already well on its way toward this goal.
 
@@ -133,7 +133,7 @@ untouched. In general we like to **favor immutability** where sensible.
 Getting support
 ---------------
 
-The first stop for pandas issues and ideas is the `Github Issue Tracker
+The first stop for pandas issues and ideas is the `GitHub Issue Tracker
 <https://github.com/pandas-dev/pandas/issues>`__. If you have a general question,
 pandas community experts can answer through `Stack Overflow
 <https://stackoverflow.com/questions/tagged/pandas>`__.
@@ -154,7 +154,7 @@ project and makes it possible to `donate <https://pandas.pydata.org/donate.html>
 Project governance
 ------------------
 
-The governance process that pandas project has used informally since its inception in 2008 is formalized in `Project Governance documents <https://github.com/pandas-dev/pandas-governance>`__.
+The governance process that pandas project has used informally since its inception in 2008 is formalized in `Project Governance documents <https://github.com/pandas-dev/pandas/blob/main/web/pandas/about/governance.md>`__.
 The documents clarify how decisions are made and how the various elements of our community interact, including the relationship between open source collaborative development and work that may be funded by for-profit or non-profit entities.
 
 Wes McKinney is the Benevolent Dictator for Life (BDFL).
@@ -162,7 +162,7 @@ Wes McKinney is the Benevolent Dictator for Life (BDFL).
 Development team
 -----------------
 
-The list of the Core Team members and more detailed information can be found on the `people’s page <https://github.com/pandas-dev/pandas-governance/blob/master/people.md>`__ of the governance repo.
+The list of the Core Team members and more detailed information can be found on the `pandas website <https://pandas.pydata.org/about/team.html>`__.
 
 
 Institutional partners

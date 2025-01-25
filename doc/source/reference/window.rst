@@ -6,9 +6,12 @@
 Window
 ======
 
-Rolling objects are returned by ``.rolling`` calls: :func:`pandas.DataFrame.rolling`, :func:`pandas.Series.rolling`, etc.
-Expanding objects are returned by ``.expanding`` calls: :func:`pandas.DataFrame.expanding`, :func:`pandas.Series.expanding`, etc.
-ExponentialMovingWindow objects are returned by ``.ewm`` calls: :func:`pandas.DataFrame.ewm`, :func:`pandas.Series.ewm`, etc.
+:class:`pandas.api.typing.Rolling` instances are returned by ``.rolling`` calls:
+:func:`pandas.DataFrame.rolling` and :func:`pandas.Series.rolling`.
+:class:`pandas.api.typing.Expanding` instances are returned by ``.expanding`` calls:
+:func:`pandas.DataFrame.expanding` and :func:`pandas.Series.expanding`.
+:class:`pandas.api.typing.ExponentialMovingWindow` instances are returned by ``.ewm``
+calls: :func:`pandas.DataFrame.ewm` and :func:`pandas.Series.ewm`.
 
 .. _api.functions_rolling:
 
@@ -27,11 +30,14 @@ Rolling window functions
    Rolling.std
    Rolling.min
    Rolling.max
+   Rolling.first
+   Rolling.last
    Rolling.corr
    Rolling.cov
    Rolling.skew
    Rolling.kurt
    Rolling.apply
+   Rolling.pipe
    Rolling.aggregate
    Rolling.quantile
    Rolling.sem
@@ -68,11 +74,14 @@ Expanding window functions
    Expanding.std
    Expanding.min
    Expanding.max
+   Expanding.first
+   Expanding.last
    Expanding.corr
    Expanding.cov
    Expanding.skew
    Expanding.kurt
    Expanding.apply
+   Expanding.pipe
    Expanding.aggregate
    Expanding.quantile
    Expanding.sem

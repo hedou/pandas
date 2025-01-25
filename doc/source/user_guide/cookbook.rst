@@ -35,7 +35,7 @@ These are some neat pandas ``idioms``
    )
    df
 
-if-then...
+If-then...
 **********
 
 An if-then on one column
@@ -125,7 +125,7 @@ Building criteria
 
 .. ipython:: python
 
-   df.loc[(df["BBB"] > 25) | (df["CCC"] >= 75), "AAA"] = 0.1
+   df.loc[(df["BBB"] > 25) | (df["CCC"] >= 75), "AAA"] = 999
    df
 
 `Select rows with data closest to certain value using argsort
@@ -176,7 +176,7 @@ One could hard code:
 Selection
 ---------
 
-Dataframes
+DataFrames
 **********
 
 The :ref:`indexing <indexing>` docs.
@@ -242,7 +242,7 @@ Ambiguity arises when an index consists of integers with a non-zero start or non
 New columns
 ***********
 
-`Efficiently and dynamically creating new columns using applymap
+`Efficiently and dynamically creating new columns using DataFrame.map (previously named applymap)
 <https://stackoverflow.com/questions/16575868/efficiently-creating-additional-columns-in-a-pandas-dataframe-using-map>`__
 
 .. ipython:: python
@@ -254,7 +254,7 @@ New columns
    new_cols = [str(x) + "_cat" for x in source_cols]
    categories = {1: "Alpha", 2: "Beta", 3: "Charlie"}
 
-   df[new_cols] = df[source_cols].applymap(categories.get)
+   df[new_cols] = df[source_cols].map(categories.get)
    df
 
 `Keep other columns when using min() with groupby
@@ -466,7 +466,7 @@ Unlike agg, apply's callable is passed a sub-DataFrame which gives you access to
 
 .. ipython:: python
 
-   gb = df.groupby(["animal"])
+   gb = df.groupby("animal")
    gb.get_group("cat")
 
 `Apply to different items in a group
@@ -530,7 +530,7 @@ Unlike agg, apply's callable is passed a sub-DataFrame which gives you access to
 
    code_groups = df.groupby("code")
 
-   agg_n_sort_order = code_groups[["data"]].transform(sum).sort_values(by="data")
+   agg_n_sort_order = code_groups[["data"]].transform("sum").sort_values(by="data")
 
    sorted_df = df.loc[agg_n_sort_order.index]
 
@@ -546,10 +546,10 @@ Unlike agg, apply's callable is passed a sub-DataFrame which gives you access to
 
    def MyCust(x):
        if len(x) > 2:
-           return x[1] * 1.234
+           return x.iloc[1] * 1.234
        return pd.NaT
 
-   mhc = {"Mean": np.mean, "Max": np.max, "Custom": MyCust}
+   mhc = {"Mean": "mean", "Max": "max", "Custom": MyCust}
    ts.resample("5min").apply(mhc)
    ts
 
@@ -685,7 +685,7 @@ The :ref:`Pivot <reshaping.pivot>` docs.
        values=["Sales"],
        index=["Province"],
        columns=["City"],
-       aggfunc=np.sum,
+       aggfunc="sum",
        margins=True,
    )
    table.stack("City")
@@ -771,7 +771,7 @@ To create year and month cross tabulation:
 
    df = pd.DataFrame(
        {"value": np.random.randn(36)},
-       index=pd.date_range("2011-01-01", freq="M", periods=36),
+       index=pd.date_range("2011-01-01", freq="ME", periods=36),
    )
 
    pd.pivot_table(
@@ -914,7 +914,7 @@ Using TimeGrouper and another grouping to create subgroups, then apply a custom 
 <https://stackoverflow.com/questions/15408156/resampling-with-custom-periods>`__
 
 `Resample intraday frame without adding new days
-<https://stackoverflow.com/questions/14898574/resample-intrday-pandas-dataframe-without-add-new-days>`__
+<https://stackoverflow.com/questions/14898574/resample-intraday-pandas-dataframe-without-add-new-days>`__
 
 `Resample minute data
 <https://stackoverflow.com/questions/14861023/resampling-minute-data>`__
@@ -1488,3 +1488,31 @@ of the data values:
        {"height": [60, 70], "weight": [100, 140, 180], "sex": ["Male", "Female"]}
    )
    df
+
+Constant Series
+---------------
+
+To assess if a series has a constant value, we can check if ``series.nunique() <= 1``.
+However, a more performant approach, that does not count all unique values first, is:
+
+.. ipython:: python
+
+   v = s.to_numpy()
+   is_constant = v.shape[0] == 0 or (s[0] == s).all()
+
+This approach assumes that the series does not contain missing values.
+For the case that we would drop NA values, we can simply remove those values first:
+
+.. ipython:: python
+
+   v = s.dropna().to_numpy()
+   is_constant = v.shape[0] == 0 or (s[0] == s).all()
+
+If missing values are considered distinct from any other value, then one could use:
+
+.. ipython:: python
+
+   v = s.to_numpy()
+   is_constant = v.shape[0] == 0 or (s[0] == s).all() or not pd.notna(v).any()
+
+(Note that this example does not disambiguate between ``np.nan``, ``pd.NA`` and ``None``)

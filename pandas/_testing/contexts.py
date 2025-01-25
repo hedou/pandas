@@ -3,25 +3,33 @@ from __future__ import annotations
 from contextlib import contextmanager
 import os
 from pathlib import Path
-from shutil import rmtree
 import tempfile
-from types import TracebackType
 from typing import (
     IO,
+    TYPE_CHECKING,
     Any,
-    Generator,
 )
 import uuid
 
-import numpy as np
-
-from pandas import set_option
+from pandas.compat import PYPY
+from pandas.errors import ChainedAssignmentError
 
 from pandas.io.common import get_handle
 
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
+    from pandas._typing import (
+        BaseBuffer,
+        CompressionOptions,
+        FilePath,
+    )
+
 
 @contextmanager
-def decompress_file(path, compression) -> Generator[IO[bytes], None, None]:
+def decompress_file(
+    path: FilePath | BaseBuffer, compression: CompressionOptions
+) -> Generator[IO[bytes]]:
     """
     Open a compressed file and return a file object.
 
@@ -42,7 +50,7 @@ def decompress_file(path, compression) -> Generator[IO[bytes], None, None]:
 
 
 @contextmanager
-def set_timezone(tz: str) -> Generator[None, None, None]:
+def set_timezone(tz: str) -> Generator[None]:
     """
     Context manager for temporarily setting a timezone.
 
@@ -58,23 +66,22 @@ def set_timezone(tz: str) -> Generator[None, None, None]:
     >>> tzlocal().tzname(datetime(2021, 1, 1))  # doctest: +SKIP
     'IST'
 
-    >>> with set_timezone('US/Eastern'):
+    >>> with set_timezone("US/Eastern"):
     ...     tzlocal().tzname(datetime(2021, 1, 1))
-    ...
     'EST'
     """
-    import os
     import time
 
     def setTZ(tz) -> None:
-        if tz is None:
-            try:
-                del os.environ["TZ"]
-            except KeyError:
-                pass
-        else:
-            os.environ["TZ"] = tz
-            time.tzset()
+        if hasattr(time, "tzset"):
+            if tz is None:
+                try:
+                    del os.environ["TZ"]
+                except KeyError:
+                    pass
+            else:
+                os.environ["TZ"] = tz
+                time.tzset()
 
     orig_tz = os.environ.get("TZ")
     setTZ(tz)
@@ -85,9 +92,7 @@ def set_timezone(tz: str) -> Generator[None, None, None]:
 
 
 @contextmanager
-def ensure_clean(
-    filename=None, return_filelike: bool = False, **kwargs: Any
-) -> Generator[Any, None, None]:
+def ensure_clean(filename=None) -> Generator[Any]:
     """
     Gets a temporary path and agrees to remove on close.
 
@@ -99,12 +104,6 @@ def ensure_clean(
     ----------
     filename : str (optional)
         suffix of the created file.
-    return_filelike : bool (default False)
-        if True, returns a file-like which is *always* cleaned. Necessary for
-        savefig and other functions which want to append extensions.
-    **kwargs
-        Additional keywords are passed to open().
-
     """
     folder = Path(tempfile.gettempdir())
 
@@ -115,57 +114,17 @@ def ensure_clean(
 
     path.touch()
 
-    handle_or_str: str | IO = str(path)
-    if return_filelike:
-        kwargs.setdefault("mode", "w+b")
-        handle_or_str = open(path, **kwargs)
+    handle_or_str = str(path)
 
     try:
         yield handle_or_str
     finally:
-        if not isinstance(handle_or_str, str):
-            handle_or_str.close()
         if path.is_file():
             path.unlink()
 
 
 @contextmanager
-def ensure_clean_dir() -> Generator[str, None, None]:
-    """
-    Get a temporary directory path and agrees to remove on close.
-
-    Yields
-    ------
-    Temporary directory path
-    """
-    directory_name = tempfile.mkdtemp(suffix="")
-    try:
-        yield directory_name
-    finally:
-        try:
-            rmtree(directory_name)
-        except OSError:
-            pass
-
-
-@contextmanager
-def ensure_safe_environment_variables() -> Generator[None, None, None]:
-    """
-    Get a context manager to safely set environment variables
-
-    All changes will be undone on close, hence environment variables set
-    within this contextmanager will neither persist nor change global state.
-    """
-    saved_environ = dict(os.environ)
-    try:
-        yield
-    finally:
-        os.environ.clear()
-        os.environ.update(saved_environ)
-
-
-@contextmanager
-def with_csv_dialect(name, **kwargs) -> Generator[None, None, None]:
+def with_csv_dialect(name: str, **kwargs) -> Generator[None]:
     """
     Context manager to temporarily register a CSV dialect for parsing CSV.
 
@@ -198,53 +157,28 @@ def with_csv_dialect(name, **kwargs) -> Generator[None, None, None]:
         csv.unregister_dialect(name)
 
 
-@contextmanager
-def use_numexpr(use, min_elements=None) -> Generator[None, None, None]:
-    from pandas.core.computation import expressions as expr
+def raises_chained_assignment_error(extra_warnings=(), extra_match=()):
+    from pandas._testing import assert_produces_warning
 
-    if min_elements is None:
-        min_elements = expr._MIN_ELEMENTS
+    if PYPY:
+        if not extra_warnings:
+            from contextlib import nullcontext
 
-    olduse = expr.USE_NUMEXPR
-    oldmin = expr._MIN_ELEMENTS
-    set_option("compute.use_numexpr", use)
-    expr._MIN_ELEMENTS = min_elements
-    try:
-        yield
-    finally:
-        expr._MIN_ELEMENTS = oldmin
-        set_option("compute.use_numexpr", olduse)
-
-
-class RNGContext:
-    """
-    Context manager to set the numpy random number generator speed. Returns
-    to the original value upon exiting the context manager.
-
-    Parameters
-    ----------
-    seed : int
-        Seed for numpy.random.seed
-
-    Examples
-    --------
-    with RNGContext(42):
-        np.random.randn()
-    """
-
-    def __init__(self, seed) -> None:
-        self.seed = seed
-
-    def __enter__(self) -> None:
-
-        self.start_state = np.random.get_state()
-        np.random.seed(self.seed)
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-
-        np.random.set_state(self.start_state)
+            return nullcontext()
+        else:
+            return assert_produces_warning(
+                extra_warnings,
+                match=extra_match,
+            )
+    else:
+        warning = ChainedAssignmentError
+        match = (
+            "A value is trying to be set on a copy of a DataFrame or Series "
+            "through chained assignment"
+        )
+        if extra_warnings:
+            warning = (warning, *extra_warnings)  # type: ignore[assignment]
+        return assert_produces_warning(
+            warning,
+            match=(match, *extra_match),
+        )

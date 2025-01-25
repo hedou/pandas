@@ -9,13 +9,13 @@
 .. raw:: html
 
     <div class="card gs-data">
-        <div class="card-header">
+        <div class="card-header gs-data-header">
             <div class="gs-data-title">
                 Data used for this tutorial:
             </div>
         </div>
         <ul class="list-group list-group-flush">
-            <li class="list-group-item">
+            <li class="list-group-item gs-data-list">
 
 .. include:: includes/titanic.rst
 
@@ -97,11 +97,11 @@ in this ``DataFrame`` are integers (``int64``), floats (``float64``) and
 strings (``object``).
 
 .. note::
-    When asking for the ``dtypes``, no brackets are used!
+    When asking for the ``dtypes``, no parentheses ``()`` are used!
     ``dtypes`` is an attribute of a ``DataFrame`` and ``Series``. Attributes
-    of ``DataFrame`` or ``Series`` do not need brackets. Attributes
-    represent a characteristic of a ``DataFrame``/``Series``, whereas a
-    method (which requires brackets) *do* something with the
+    of a ``DataFrame`` or ``Series`` do not need ``()``. Attributes
+    represent a characteristic of a ``DataFrame``/``Series``, whereas
+    methods (which require parentheses ``()``) *do* something with the
     ``DataFrame``/``Series`` as introduced in the :ref:`first tutorial <10min_tut_01_tableoriented>`.
 
 .. raw:: html
@@ -110,6 +110,12 @@ strings (``object``).
         <li>
 
 My colleague requested the Titanic data as a spreadsheet.
+
+.. note::
+    If you want to use :func:`~pandas.to_excel` and :func:`~pandas.read_excel`,
+    you need to install an Excel reader as outlined in the
+    :ref:`Excel files <install.excel_dependencies>` section of the
+    installation documentation.
 
 .. ipython:: python
 
@@ -166,11 +172,11 @@ The method :meth:`~DataFrame.info` provides technical information about a
 -  The table has 12 columns. Most columns have a value for each of the
    rows (all 891 values are ``non-null``). Some columns do have missing
    values and less than 891 ``non-null`` values.
--  The columns ``Name``, ``Sex``, ``Cabin`` and ``Embarked`` consists of
+-  The columns ``Name``, ``Sex``, ``Cabin`` and ``Embarked`` consist of
    textual data (strings, aka ``object``). The other columns are
-   numerical data with some of them whole numbers (aka ``integer``) and
-   others are real numbers (aka ``float``).
--  The kind of data (characters, integers,…) in the different columns
+   numerical data, some of them are whole numbers (``integer``) and
+   others are real numbers (``float``).
+-  The kind of data (characters, integers, …) in the different columns
    are summarized by listing the ``dtypes``.
 -  The approximate amount of RAM used to hold the DataFrame is provided
    as well.
@@ -188,7 +194,7 @@ The method :meth:`~DataFrame.info` provides technical information about a
 -  Getting data in to pandas from many different file formats or data
    sources is supported by ``read_*`` functions.
 -  Exporting data out of pandas is provided by different
-   ``to_*``\ methods.
+   ``to_*`` methods.
 -  The ``head``/``tail``/``info`` methods and the ``dtypes`` attribute
    are convenient for a first check.
 
@@ -198,7 +204,7 @@ The method :meth:`~DataFrame.info` provides technical information about a
 
 .. raw:: html
 
-    <div class="d-flex flex-row bg-light gs-torefguide">
+    <div class="d-flex flex-row gs-torefguide">
         <span class="badge badge-info">To user guide</span>
 
 For a complete overview of the input and output possibilities from and to pandas, see the user guide section about :ref:`reader and writer functions <io>`.

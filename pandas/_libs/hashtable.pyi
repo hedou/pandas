@@ -1,6 +1,8 @@
 from typing import (
+    Any,
     Hashable,
     Literal,
+    overload,
 )
 
 import numpy as np
@@ -13,30 +15,71 @@ def unique_label_indices(
 
 class Factorizer:
     count: int
-    def __init__(self, size_hint: int) -> None: ...
+    uniques: Any
+    def __init__(self, size_hint: int, uses_mask: bool = False) -> None: ...
     def get_count(self) -> int: ...
+    def factorize(
+        self,
+        values: np.ndarray,
+        na_sentinel=...,
+        na_value=...,
+        mask=...,
+    ) -> npt.NDArray[np.intp]: ...
+    def hash_inner_join(
+        self, values: np.ndarray, mask=...
+    ) -> tuple[np.ndarray, np.ndarray]: ...
 
 class ObjectFactorizer(Factorizer):
     table: PyObjectHashTable
     uniques: ObjectVector
-    def factorize(
-        self,
-        values: npt.NDArray[np.object_],
-        sort: bool = ...,
-        na_sentinel=...,
-        na_value=...,
-    ) -> npt.NDArray[np.intp]: ...
 
 class Int64Factorizer(Factorizer):
     table: Int64HashTable
     uniques: Int64Vector
-    def factorize(
-        self,
-        values: np.ndarray,  # const int64_t[:]
-        sort: bool = ...,
-        na_sentinel=...,
-        na_value=...,
-    ) -> npt.NDArray[np.intp]: ...
+
+class UInt64Factorizer(Factorizer):
+    table: UInt64HashTable
+    uniques: UInt64Vector
+
+class Int32Factorizer(Factorizer):
+    table: Int32HashTable
+    uniques: Int32Vector
+
+class UInt32Factorizer(Factorizer):
+    table: UInt32HashTable
+    uniques: UInt32Vector
+
+class Int16Factorizer(Factorizer):
+    table: Int16HashTable
+    uniques: Int16Vector
+
+class UInt16Factorizer(Factorizer):
+    table: UInt16HashTable
+    uniques: UInt16Vector
+
+class Int8Factorizer(Factorizer):
+    table: Int8HashTable
+    uniques: Int8Vector
+
+class UInt8Factorizer(Factorizer):
+    table: UInt8HashTable
+    uniques: UInt8Vector
+
+class Float64Factorizer(Factorizer):
+    table: Float64HashTable
+    uniques: Float64Vector
+
+class Float32Factorizer(Factorizer):
+    table: Float32HashTable
+    uniques: Float32Vector
+
+class Complex64Factorizer(Factorizer):
+    table: Complex64HashTable
+    uniques: Complex64Vector
+
+class Complex128Factorizer(Factorizer):
+    table: Complex128HashTable
+    uniques: Complex128Vector
 
 class Int64Vector:
     def __init__(self, *args) -> None: ...
@@ -110,23 +153,27 @@ class ObjectVector:
 
 class HashTable:
     # NB: The base HashTable class does _not_ actually have these methods;
-    #  we are putting the here for the sake of mypy to avoid
+    #  we are putting them here for the sake of mypy to avoid
     #  reproducing them in each subclass below.
-    def __init__(self, size_hint: int = ...) -> None: ...
+    def __init__(self, size_hint: int = ..., uses_mask: bool = ...) -> None: ...
     def __len__(self) -> int: ...
     def __contains__(self, key: Hashable) -> bool: ...
     def sizeof(self, deep: bool = ...) -> int: ...
     def get_state(self) -> dict[str, int]: ...
-    # TODO: `item` type is subclass-specific
-    def get_item(self, item): ...  # TODO: return type?
-    def set_item(self, item) -> None: ...
+    # TODO: `val/key` type is subclass-specific
+    def get_item(self, val): ...  # TODO: return type?
+    def set_item(self, key, val) -> None: ...
+    def get_na(self): ...  # TODO: return type?
+    def set_na(self, val) -> None: ...
     def map_locations(
         self,
         values: np.ndarray,  # np.ndarray[subclass-specific]
+        mask: npt.NDArray[np.bool_] | None = ...,
     ) -> None: ...
     def lookup(
         self,
         values: np.ndarray,  # np.ndarray[subclass-specific]
+        mask: npt.NDArray[np.bool_] | None = ...,
     ) -> npt.NDArray[np.intp]: ...
     def get_labels(
         self,
@@ -135,22 +182,46 @@ class HashTable:
         count_prior: int = ...,
         na_sentinel: int = ...,
         na_value: object = ...,
+        mask=...,
     ) -> npt.NDArray[np.intp]: ...
+    @overload
     def unique(
         self,
         values: np.ndarray,  # np.ndarray[subclass-specific]
-        return_inverse: bool = ...,
+        *,
+        return_inverse: Literal[False] = ...,
+        mask: None = ...,
+    ) -> np.ndarray: ...  # np.ndarray[subclass-specific]
+    @overload
+    def unique(
+        self,
+        values: np.ndarray,  # np.ndarray[subclass-specific]
+        *,
+        return_inverse: Literal[True],
+        mask: None = ...,
+    ) -> tuple[np.ndarray, npt.NDArray[np.intp]]: ...  # np.ndarray[subclass-specific]
+    @overload
+    def unique(
+        self,
+        values: np.ndarray,  # np.ndarray[subclass-specific]
+        *,
+        return_inverse: Literal[False] = ...,
+        mask: npt.NDArray[np.bool_],
     ) -> tuple[
-        np.ndarray,  # np.ndarray[subclass-specific]
-        npt.NDArray[np.intp],
-    ] | np.ndarray: ...  # np.ndarray[subclass-specific]
+        np.ndarray,
+        npt.NDArray[np.bool_],
+    ]: ...  # np.ndarray[subclass-specific]
     def factorize(
         self,
         values: np.ndarray,  # np.ndarray[subclass-specific]
         na_sentinel: int = ...,
         na_value: object = ...,
         mask=...,
+        ignore_na: bool = True,
     ) -> tuple[np.ndarray, npt.NDArray[np.intp]]: ...  # np.ndarray[subclass-specific]
+    def hash_inner_join(
+        self, values: np.ndarray, mask=...
+    ) -> tuple[np.ndarray, np.ndarray]: ...
 
 class Complex128HashTable(HashTable): ...
 class Complex64HashTable(HashTable): ...
@@ -183,6 +254,7 @@ class IntpHashTable(HashTable): ...
 def duplicated(
     values: np.ndarray,
     keep: Literal["last", "first", False] = ...,
+    mask: npt.NDArray[np.bool_] | None = ...,
 ) -> npt.NDArray[np.bool_]: ...
 def mode(
     values: np.ndarray, dropna: bool, mask: npt.NDArray[np.bool_] | None = ...
@@ -191,7 +263,7 @@ def value_count(
     values: np.ndarray,
     dropna: bool,
     mask: npt.NDArray[np.bool_] | None = ...,
-) -> tuple[np.ndarray, npt.NDArray[np.int64]]: ...  # np.ndarray[same-as-values]
+) -> tuple[np.ndarray, npt.NDArray[np.int64], int]: ...  # np.ndarray[same-as-values]
 
 # arr and values should have same dtype
 def ismember(

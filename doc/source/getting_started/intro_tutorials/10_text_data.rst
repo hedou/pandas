@@ -9,13 +9,13 @@
 .. raw:: html
 
     <div class="card gs-data">
-        <div class="card-header">
+        <div class="card-header gs-data-header">
             <div class="gs-data-title">
                 Data used for this tutorial:
             </div>
         </div>
         <ul class="list-group list-group-flush">
-            <li class="list-group-item">
+            <li class="list-group-item gs-data-list">
 .. include:: includes/titanic.rst
 
 .. ipython:: python
@@ -134,8 +134,8 @@ only one countess on the Titanic, we get one row as a result.
 .. note::
     More powerful extractions on strings are supported, as the
     :meth:`Series.str.contains` and :meth:`Series.str.extract` methods accept `regular
-    expressions <https://docs.python.org/3/library/re.html>`__, but out of
-    scope of this tutorial.
+    expressions <https://docs.python.org/3/library/re.html>`__, but are out of
+    the scope of this tutorial.
 
 .. raw:: html
 
@@ -200,7 +200,7 @@ In the "Sex" column, replace values of "male" by "M" and values of "female" by "
 
 Whereas :meth:`~Series.replace` is not a string method, it provides a convenient way
 to use mappings or vocabularies to translate certain values. It requires
-a ``dictionary`` to define the mapping ``{from : to}``.
+a ``dictionary`` to define the mapping ``{from: to}``.
 
 .. raw:: html
 

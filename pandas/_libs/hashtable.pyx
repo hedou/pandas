@@ -1,8 +1,4 @@
 cimport cython
-from cpython.mem cimport (
-    PyMem_Free,
-    PyMem_Malloc,
-)
 from cpython.ref cimport (
     Py_INCREF,
     PyObject,
@@ -11,6 +7,7 @@ from libc.stdlib cimport (
     free,
     malloc,
 )
+from libc.string cimport memcpy
 
 import numpy as np
 
@@ -33,7 +30,10 @@ from pandas._libs.khash cimport (
     kh_python_hash_func,
     khiter_t,
 )
-from pandas._libs.missing cimport checknull
+from pandas._libs.missing cimport (
+    checknull,
+    is_matching_na,
+)
 
 
 def get_hashtable_trace_domain():
@@ -73,11 +73,17 @@ cdef class Factorizer:
     cdef readonly:
         Py_ssize_t count
 
-    def __cinit__(self, size_hint: int):
+    def __cinit__(self, size_hint: int, uses_mask: bool = False):
         self.count = 0
 
     def get_count(self) -> int:
         return self.count
+
+    def factorize(self, values, na_sentinel=-1, na_value=None, mask=None) -> np.ndarray:
+        raise NotImplementedError
+
+    def hash_inner_join(self, values, mask=None):
+        raise NotImplementedError
 
 
 cdef class ObjectFactorizer(Factorizer):
@@ -85,12 +91,12 @@ cdef class ObjectFactorizer(Factorizer):
         PyObjectHashTable table
         ObjectVector uniques
 
-    def __cinit__(self, size_hint: int):
+    def __cinit__(self, size_hint: int, uses_mask: bool = False):
         self.table = PyObjectHashTable(size_hint)
         self.uniques = ObjectVector()
 
     def factorize(
-        self, ndarray[object] values, sort=False, na_sentinel=-1, na_value=None
+        self, ndarray[object] values, na_sentinel=-1, na_value=None, mask=None
     ) -> np.ndarray:
         """
 
@@ -109,66 +115,14 @@ cdef class ObjectFactorizer(Factorizer):
         cdef:
             ndarray[intp_t] labels
 
+        if mask is not None:
+            raise NotImplementedError("mask not supported for ObjectFactorizer.")
+
         if self.uniques.external_view_exists:
             uniques = ObjectVector()
             uniques.extend(self.uniques.to_array())
             self.uniques = uniques
         labels = self.table.get_labels(values, self.uniques,
                                        self.count, na_sentinel, na_value)
-        mask = (labels == na_sentinel)
-        # sort on
-        if sort:
-            sorter = self.uniques.to_array().argsort()
-            reverse_indexer = np.empty(len(sorter), dtype=np.intp)
-            reverse_indexer.put(sorter, np.arange(len(sorter)))
-            labels = reverse_indexer.take(labels, mode='clip')
-            labels[mask] = na_sentinel
-        self.count = len(self.uniques)
-        return labels
-
-
-cdef class Int64Factorizer(Factorizer):
-    cdef public:
-        Int64HashTable table
-        Int64Vector uniques
-
-    def __cinit__(self, size_hint: int):
-        self.table = Int64HashTable(size_hint)
-        self.uniques = Int64Vector()
-
-    def factorize(self, const int64_t[:] values, sort=False,
-                  na_sentinel=-1, na_value=None) -> np.ndarray:
-        """
-        Returns
-        -------
-        ndarray[intp_t]
-
-        Examples
-        --------
-        Factorize values with nans replaced by na_sentinel
-
-        >>> fac = Int64Factorizer(3)
-        >>> fac.factorize(np.array([1,2,3]), na_sentinel=20)
-        array([0, 1, 2])
-        """
-        cdef:
-            ndarray[intp_t] labels
-
-        if self.uniques.external_view_exists:
-            uniques = Int64Vector()
-            uniques.extend(self.uniques.to_array())
-            self.uniques = uniques
-        labels = self.table.get_labels(values, self.uniques,
-                                       self.count, na_sentinel,
-                                       na_value=na_value)
-
-        # sort on
-        if sort:
-            sorter = self.uniques.to_array().argsort()
-            reverse_indexer = np.empty(len(sorter), dtype=np.intp)
-            reverse_indexer.put(sorter, np.arange(len(sorter)))
-
-            labels = reverse_indexer.take(labels)
-
         self.count = len(self.uniques)
         return labels

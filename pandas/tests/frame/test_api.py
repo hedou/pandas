@@ -5,13 +5,10 @@ import pydoc
 import numpy as np
 import pytest
 
+from pandas._config import using_string_dtype
 from pandas._config.config import option_context
 
-import pandas.util._test_decorators as td
-from pandas.util._test_decorators import (
-    async_mark,
-    skip_if_no,
-)
+from pandas.compat import HAS_PYARROW
 
 import pandas as pd
 from pandas import (
@@ -90,7 +87,7 @@ class TestDataFrameMisc:
         assert isinstance(df.__getitem__("A"), DataFrame)
 
     def test_display_max_dir_items(self):
-        # display.max_dir_items increaes the number of columns that are in __dir__.
+        # display.max_dir_items increases the number of columns that are in __dir__.
         columns = ["a" + str(i) for i in range(420)]
         values = [range(420), range(420)]
         df = DataFrame(values, columns=columns)
@@ -118,6 +115,9 @@ class TestDataFrameMisc:
         with pytest.raises(TypeError, match=msg):
             hash(empty_frame)
 
+    @pytest.mark.xfail(
+        using_string_dtype() and HAS_PYARROW, reason="surrogates not allowed"
+    )
     def test_column_name_contains_unicode_surrogate(self):
         # GH 25509
         colname = "\ud83d"
@@ -127,8 +127,8 @@ class TestDataFrameMisc:
         assert df.columns[0] == colname
 
     def test_new_empty_index(self):
-        df1 = DataFrame(np.random.randn(0, 3))
-        df2 = DataFrame(np.random.randn(0, 3))
+        df1 = DataFrame(np.random.default_rng(2).standard_normal((0, 3)))
+        df2 = DataFrame(np.random.default_rng(2).standard_normal((0, 3)))
         df1.index.name = "foo"
         assert df2.index.name is None
 
@@ -209,7 +209,6 @@ class TestDataFrameMisc:
         assert df.T.empty
 
     def test_with_datetimelikes(self):
-
         df = DataFrame(
             {
                 "A": date_range("20130101", periods=10),
@@ -219,15 +218,13 @@ class TestDataFrameMisc:
         t = df.T
 
         result = t.dtypes.value_counts()
-        expected = Series({np.dtype("object"): 10})
+        expected = Series({np.dtype("object"): 10}, name="count")
         tm.assert_series_equal(result, expected)
 
     def test_deepcopy(self, float_frame):
         cp = deepcopy(float_frame)
-        series = cp["A"]
-        series[:] = 10
-        for idx, value in series.items():
-            assert float_frame["A"][idx] != value
+        cp.loc[0, "A"] = 10
+        assert not float_frame.equals(cp)
 
     def test_inplace_return_self(self):
         # GH 1893
@@ -244,8 +241,7 @@ class TestDataFrameMisc:
 
         # set_index
         f = lambda x: x.set_index("a", inplace=True)
-        with tm.assert_produces_warning(FutureWarning, match="The 'inplace' keyword"):
-            _check_f(data.copy(), f)
+        _check_f(data.copy(), f)
 
         # reset_index
         f = lambda x: x.reset_index(inplace=True)
@@ -294,9 +290,7 @@ class TestDataFrameMisc:
         f = lambda x: x.rename({1: "foo"}, inplace=True)
         _check_f(d.copy(), f)
 
-    @async_mark()
-    @td.check_file_leaks
-    async def test_tab_complete_warning(self, ip, frame_or_series):
+    def test_tab_complete_warning(self, ip, frame_or_series):
         # GH 16409
         pytest.importorskip("IPython", minversion="6.0.0")
         from IPython.core.completer import provisionalcompleter
@@ -306,11 +300,10 @@ class TestDataFrameMisc:
         else:
             code = "from pandas import Series; obj = Series(dtype=object)"
 
-        await ip.run_code(code)
-
+        ip.run_cell(code)
         # GH 31324 newer jedi version raises Deprecation warning;
         #  appears resolved 2021-02-02
-        with tm.assert_produces_warning(None):
+        with tm.assert_produces_warning(None, raise_on_extra_warnings=False):
             with provisionalcompleter("ignore"):
                 list(ip.Completer.completions("obj.", 1))
 
@@ -322,9 +315,20 @@ class TestDataFrameMisc:
         result = df.rename(columns=str)
         assert result.attrs == {"version": 1}
 
+    def test_attrs_deepcopy(self):
+        df = DataFrame({"A": [2, 3]})
+        assert df.attrs == {}
+        df.attrs["tags"] = {"spam", "ham"}
+
+        result = df.rename(columns=str)
+        assert result.attrs == df.attrs
+        assert result.attrs["tags"] is not df.attrs["tags"]
+
     @pytest.mark.parametrize("allows_duplicate_labels", [True, False, None])
     def test_set_flags(
-        self, allows_duplicate_labels, frame_or_series, using_copy_on_write
+        self,
+        allows_duplicate_labels,
+        frame_or_series,
     ):
         obj = DataFrame({"A": [1, 2]})
         key = (0, 0)
@@ -353,17 +357,10 @@ class TestDataFrameMisc:
             assert np.may_share_memory(obj["A"].values, result["A"].values)
 
         result.iloc[key] = 0
-        if using_copy_on_write:
-            assert obj.iloc[key] == 1
-        else:
-            assert obj.iloc[key] == 0
-            # set back to 1 for test below
-            result.iloc[key] = 1
+        assert obj.iloc[key] == 1
 
         # Now we do copy.
-        result = obj.set_flags(
-            copy=True, allows_duplicate_labels=allows_duplicate_labels
-        )
+        result = obj.set_flags(allows_duplicate_labels=allows_duplicate_labels)
         result.iloc[key] = 10
         assert obj.iloc[key] == 1
 
@@ -377,14 +374,7 @@ class TestDataFrameMisc:
         with pytest.raises(AttributeError, match=msg):
             df._constructor_expanddim(np.arange(27).reshape(3, 3, 3))
 
-    @skip_if_no("jinja2")
     def test_inspect_getmembers(self):
         # GH38740
         df = DataFrame()
-        with tm.assert_produces_warning(None):
-            inspect.getmembers(df)
-
-    def test_dataframe_iteritems_deprecated(self):
-        df = DataFrame([1])
-        with tm.assert_produces_warning(FutureWarning):
-            next(df.iteritems())
+        inspect.getmembers(df)
