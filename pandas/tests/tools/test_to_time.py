@@ -8,7 +8,6 @@ from pandas.compat import PY311
 
 from pandas import Series
 import pandas._testing as tm
-from pandas.core.tools.datetimes import to_time as to_time_alias
 from pandas.core.tools.times import to_time
 
 # The tests marked with this are locale-dependent.
@@ -55,8 +54,8 @@ class TestToTime:
         assert to_time(arg, infer_time_format=True) == expected_arr
         assert to_time(arg, format="%I:%M%p", errors="coerce") == [None, None]
 
-        res = to_time(arg, format="%I:%M%p", errors="ignore")
-        tm.assert_numpy_array_equal(res, np.array(arg, dtype=np.object_))
+        with pytest.raises(ValueError, match="errors must be"):
+            to_time(arg, format="%I:%M%p", errors="ignore")
 
         msg = "Cannot convert.+to a time with given format"
         with pytest.raises(ValueError, match=msg):
@@ -69,12 +68,3 @@ class TestToTime:
         res = to_time(np.array(arg))
         assert isinstance(res, list)
         assert res == expected_arr
-
-
-def test_to_time_alias():
-    expected = time(14, 15)
-
-    with tm.assert_produces_warning(FutureWarning):
-        result = to_time_alias(expected)
-
-    assert result == expected

@@ -1,16 +1,21 @@
 """Common IO api utilities"""
+
 from __future__ import annotations
 
 from abc import (
     ABC,
     abstractmethod,
 )
-import bz2
 import codecs
+from collections import defaultdict
+from collections.abc import (
+    Hashable,
+    Mapping,
+    Sequence,
+)
 import dataclasses
 import functools
 import gzip
-import inspect
 from io import (
     BufferedIOBase,
     BytesIO,
@@ -26,12 +31,12 @@ import re
 import tarfile
 from typing import (
     IO,
+    TYPE_CHECKING,
     Any,
     AnyStr,
+    DefaultDict,
     Generic,
     Literal,
-    Mapping,
-    Sequence,
     TypeVar,
     cast,
     overload,
@@ -48,14 +53,8 @@ import zipfile
 
 from pandas._typing import (
     BaseBuffer,
-    CompressionDict,
-    CompressionOptions,
-    FilePath,
-    ReadBuffer,
-    StorageOptions,
-    WriteBuffer,
+    ReadCsvBuffer,
 )
-from pandas.compat import get_lzma_file
 from pandas.compat._optional import import_optional_dependency
 from pandas.util._decorators import doc
 from pandas.util._exceptions import find_stack_level
@@ -66,6 +65,7 @@ from pandas.core.dtypes.common import (
     is_integer,
     is_list_like,
 )
+from pandas.core.dtypes.generic import ABCMultiIndex
 
 from pandas.core.shared_docs import _shared_docs
 
@@ -74,6 +74,21 @@ _VALID_URLS.discard("")
 _RFC_3986_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9+\-+.]*://")
 
 BaseBufferT = TypeVar("BaseBufferT", bound=BaseBuffer)
+
+
+if TYPE_CHECKING:
+    from types import TracebackType
+
+    from pandas._typing import (
+        CompressionDict,
+        CompressionOptions,
+        FilePath,
+        ReadBuffer,
+        StorageOptions,
+        WriteBuffer,
+    )
+
+    from pandas import MultiIndex
 
 
 @dataclasses.dataclass
@@ -130,7 +145,12 @@ class IOHandles(Generic[AnyStr]):
     def __enter__(self) -> IOHandles[AnyStr]:
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
 
@@ -153,13 +173,11 @@ def is_url(url: object) -> bool:
 
 
 @overload
-def _expand_user(filepath_or_buffer: str) -> str:
-    ...
+def _expand_user(filepath_or_buffer: str) -> str: ...
 
 
 @overload
-def _expand_user(filepath_or_buffer: BaseBufferT) -> BaseBufferT:
-    ...
+def _expand_user(filepath_or_buffer: BaseBufferT) -> BaseBufferT: ...
 
 
 def _expand_user(filepath_or_buffer: str | BaseBufferT) -> str | BaseBufferT:
@@ -211,15 +229,15 @@ def validate_header_arg(header: object) -> None:
 
 
 @overload
-def stringify_path(filepath_or_buffer: FilePath, convert_file_like: bool = ...) -> str:
-    ...
+def stringify_path(
+    filepath_or_buffer: FilePath, convert_file_like: bool = ...
+) -> str: ...
 
 
 @overload
 def stringify_path(
     filepath_or_buffer: BaseBufferT, convert_file_like: bool = ...
-) -> BaseBufferT:
-    ...
+) -> BaseBufferT: ...
 
 
 def stringify_path(
@@ -239,7 +257,7 @@ def stringify_path(
 
     Notes
     -----
-    Objects supporting the fspath protocol (python 3.6+) are coerced
+    Objects supporting the fspath protocol are coerced
     according to its __fspath__ method.
 
     Any other object is passed through unchanged, which includes bytes,
@@ -256,14 +274,14 @@ def stringify_path(
     return _expand_user(filepath_or_buffer)
 
 
-def urlopen(*args, **kwargs):
+def urlopen(*args: Any, **kwargs: Any) -> Any:
     """
     Lazy-import wrapper for stdlib urlopen, as that imports a big chunk of
     the stdlib.
     """
     import urllib.request
 
-    return urllib.request.urlopen(*args, **kwargs)
+    return urllib.request.urlopen(*args, **kwargs)  # noqa: TID251
 
 
 def is_fsspec_url(url: FilePath | BaseBuffer) -> bool:
@@ -285,9 +303,9 @@ def is_fsspec_url(url: FilePath | BaseBuffer) -> bool:
 def _get_filepath_or_buffer(
     filepath_or_buffer: FilePath | BaseBuffer,
     encoding: str = "utf-8",
-    compression: CompressionOptions = None,
+    compression: CompressionOptions | None = None,
     mode: str = "r",
-    storage_options: StorageOptions = None,
+    storage_options: StorageOptions | None = None,
 ) -> IOArgs:
     """
     If the filepath_or_buffer is a url, translate and return the buffer.
@@ -295,7 +313,7 @@ def _get_filepath_or_buffer(
 
     Parameters
     ----------
-    filepath_or_buffer : a url, filepath (str, py.path.local or pathlib.Path),
+    filepath_or_buffer : a url, filepath (str or pathlib.Path),
                          or buffer
     {compression_options}
 
@@ -306,11 +324,8 @@ def _get_filepath_or_buffer(
 
     {storage_options}
 
-        .. versionadded:: 1.2.0
 
-    ..versionchange:: 1.2.0
-
-      Returns the dataclass IOArgs.
+    Returns the dataclass IOArgs.
     """
     filepath_or_buffer = stringify_path(filepath_or_buffer)
 
@@ -323,7 +338,7 @@ def _get_filepath_or_buffer(
         warnings.warn(
             "compression has no effect when passing a non-binary object as input.",
             RuntimeWarning,
-            stacklevel=find_stack_level(inspect.currentframe()),
+            stacklevel=find_stack_level(),
         )
         compression_method = None
 
@@ -339,7 +354,17 @@ def _get_filepath_or_buffer(
         warnings.warn(
             f"{compression} will not write the byte order mark for {encoding}",
             UnicodeWarning,
-            stacklevel=find_stack_level(inspect.currentframe()),
+            stacklevel=find_stack_level(),
+        )
+
+    if "a" in mode and compression_method in ["zip", "tar"]:
+        # GH56778
+        warnings.warn(
+            "zip and tar do not support mode 'a' properly. "
+            "This combination will result in multiple files with same name "
+            "being added to the archive.",
+            RuntimeWarning,
+            stacklevel=find_stack_level(),
         )
 
     # Use binary mode when converting path-like objects to file-like objects (fsspec)
@@ -478,7 +503,7 @@ def file_path_to_url(path: str) -> str:
     return urljoin("file:", pathname2url(path))
 
 
-_extension_to_compression = {
+extension_to_compression = {
     ".tar": "tar",
     ".tar.gz": "tar",
     ".tar.bz2": "tar",
@@ -489,7 +514,7 @@ _extension_to_compression = {
     ".xz": "xz",
     ".zst": "zstd",
 }
-_supported_compressions = set(_extension_to_compression.values())
+_supported_compressions = set(extension_to_compression.values())
 
 
 def get_compression_method(
@@ -559,13 +584,16 @@ def infer_compression(
     # Infer compression
     if compression == "infer":
         # Convert all path types (e.g. pathlib.Path) to strings
+        if isinstance(filepath_or_buffer, str) and "::" in filepath_or_buffer:
+            # chained URLs contain ::
+            filepath_or_buffer = filepath_or_buffer.split("::")[0]
         filepath_or_buffer = stringify_path(filepath_or_buffer, convert_file_like=True)
         if not isinstance(filepath_or_buffer, str):
             # Cannot infer compression of a buffer, assume no compression
             return None
 
         # Infer compression from the filename/URL extension
-        for extension, compression in _extension_to_compression.items():
+        for extension, compression in extension_to_compression.items():
             if filepath_or_buffer.lower().endswith(extension):
                 return compression
         return None
@@ -574,9 +602,7 @@ def infer_compression(
     if compression in _supported_compressions:
         return compression
 
-    # https://github.com/python/mypy/issues/5492
-    # Unsupported operand types for + ("List[Optional[str]]" and "List[str]")
-    valid = ["infer", None] + sorted(_supported_compressions)  # type: ignore[operator]
+    valid = ["infer", None] + sorted(_supported_compressions)
     msg = (
         f"Unrecognized compression type: {compression}\n"
         f"Valid compression types are {valid}"
@@ -609,8 +635,7 @@ def get_handle(
     is_text: Literal[False],
     errors: str | None = ...,
     storage_options: StorageOptions = ...,
-) -> IOHandles[bytes]:
-    ...
+) -> IOHandles[bytes]: ...
 
 
 @overload
@@ -624,8 +649,7 @@ def get_handle(
     is_text: Literal[True] = ...,
     errors: str | None = ...,
     storage_options: StorageOptions = ...,
-) -> IOHandles[str]:
-    ...
+) -> IOHandles[str]: ...
 
 
 @overload
@@ -639,8 +663,7 @@ def get_handle(
     is_text: bool = ...,
     errors: str | None = ...,
     storage_options: StorageOptions = ...,
-) -> IOHandles[str] | IOHandles[bytes]:
-    ...
+) -> IOHandles[str] | IOHandles[bytes]: ...
 
 
 @doc(compression_options=_shared_docs["compression_options"] % "path_or_buf")
@@ -649,11 +672,11 @@ def get_handle(
     mode: str,
     *,
     encoding: str | None = None,
-    compression: CompressionOptions = None,
+    compression: CompressionOptions | None = None,
     memory_map: bool = False,
     is_text: bool = True,
     errors: str | None = None,
-    storage_options: StorageOptions = None,
+    storage_options: StorageOptions | None = None,
 ) -> IOHandles[str] | IOHandles[bytes]:
     """
     Get file handle for given path/buffer and mode.
@@ -668,13 +691,11 @@ def get_handle(
         Encoding to use.
     {compression_options}
 
-        .. versionchanged:: 1.0.0
-           May now be a dict with key 'method' as compression mode
+           May be a dict with key 'method' as compression mode
            and other keys as compression options if compression
            mode is 'zip'.
 
-        .. versionchanged:: 1.1.0
-           Passing compression options as keys in dict is now
+           Passing compression options as keys in dict is
            supported for compression modes 'gzip', 'bz2', 'zstd' and 'zip'.
 
         .. versionchanged:: 1.4.0 Zstandard support.
@@ -691,8 +712,6 @@ def get_handle(
         of options.
     storage_options: StorageOptions = None
         Passed to _get_filepath_or_buffer
-
-    .. versionchanged:: 1.2.0
 
     Returns the dataclass IOHandles
     """
@@ -764,7 +783,9 @@ def get_handle(
 
         # BZ Compression
         elif compression == "bz2":
-            # No overload variant of "BZ2File" matches argument types
+            import bz2
+
+            # Overload of "BZ2File" to handle pickle protocol 5
             # "Union[str, BaseBuffer]", "str", "Dict[str, Any]"
             handle = bz2.BZ2File(  # type: ignore[call-overload]
                 handle,
@@ -778,7 +799,9 @@ def get_handle(
             # "Union[str, BaseBuffer]"; expected "Union[Union[str, PathLike[str]],
             # ReadBuffer[bytes], WriteBuffer[bytes]]"
             handle = _BytesZipFile(
-                handle, ioargs.mode, **compression_args  # type: ignore[arg-type]
+                handle,  # type: ignore[arg-type]
+                ioargs.mode,
+                **compression_args,
             )
             if handle.buffer.mode == "r":
                 handles.append(handle)
@@ -803,7 +826,8 @@ def get_handle(
                 # type "BaseBuffer"; expected "Union[ReadBuffer[bytes],
                 # WriteBuffer[bytes], None]"
                 handle = _BytesTarFile(
-                    fileobj=handle, **compression_args  # type: ignore[arg-type]
+                    fileobj=handle,  # type: ignore[arg-type]
+                    **compression_args,
                 )
             assert isinstance(handle, _BytesTarFile)
             if "r" in handle.buffer.mode:
@@ -825,8 +849,14 @@ def get_handle(
         elif compression == "xz":
             # error: Argument 1 to "LZMAFile" has incompatible type "Union[str,
             # BaseBuffer]"; expected "Optional[Union[Union[str, bytes, PathLike[str],
-            # PathLike[bytes]], IO[bytes]]]"
-            handle = get_lzma_file()(handle, ioargs.mode)  # type: ignore[arg-type]
+            # PathLike[bytes]], IO[bytes]], None]"
+            import lzma
+
+            handle = lzma.LZMAFile(
+                handle,  # type: ignore[arg-type]
+                ioargs.mode,
+                **compression_args,
+            )
 
         # Zstd Compression
         elif compression == "zstd":
@@ -883,10 +913,10 @@ def get_handle(
             or not hasattr(handle, "seekable")
         ):
             handle = _IOWrapper(handle)
-        # error: Argument 1 to "TextIOWrapper" has incompatible type
-        # "_IOWrapper"; expected "IO[bytes]"
+        # error: Value of type variable "_BufferT_co" of "TextIOWrapper" cannot
+        # be "_IOWrapper | BaseBuffer" [type-var]
         handle = TextIOWrapper(
-            handle,  # type: ignore[arg-type]
+            handle,  # type: ignore[type-var]
             encoding=ioargs.encoding,
             errors=errors,
             newline="",
@@ -929,23 +959,22 @@ class _BufferedWriter(BytesIO, ABC):  # type: ignore[misc]
     This wrapper writes to the underlying buffer on close.
     """
 
+    buffer = BytesIO()
+
     @abstractmethod
-    def write_to_buffer(self) -> None:
-        ...
+    def write_to_buffer(self) -> None: ...
 
     def close(self) -> None:
         if self.closed:
             # already closed
             return
-        if self.getvalue():
+        if self.getbuffer().nbytes:
             # write to buffer
             self.seek(0)
-            # error: "_BufferedWriter" has no attribute "buffer"
-            with self.buffer:  # type: ignore[attr-defined]
+            with self.buffer:
                 self.write_to_buffer()
         else:
-            # error: "_BufferedWriter" has no attribute "buffer"
-            self.buffer.close()  # type: ignore[attr-defined]
+            self.buffer.close()
         super().close()
 
 
@@ -956,18 +985,17 @@ class _BytesTarFile(_BufferedWriter):
         mode: Literal["r", "a", "w", "x"] = "r",
         fileobj: ReadBuffer[bytes] | WriteBuffer[bytes] | None = None,
         archive_name: str | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         super().__init__()
         self.archive_name = archive_name
         self.name = name
-        # error: Argument "fileobj" to "open" of "TarFile" has incompatible
-        # type "Union[ReadBuffer[bytes], WriteBuffer[bytes], None]"; expected
-        # "Optional[IO[bytes]]"
-        self.buffer = tarfile.TarFile.open(
+        # error: Incompatible types in assignment (expression has type "TarFile",
+        # base class "_BufferedWriter" defined the type as "BytesIO")
+        self.buffer: tarfile.TarFile = tarfile.TarFile.open(  # type: ignore[assignment]
             name=name,
             mode=self.extend_mode(mode),
-            fileobj=fileobj,  # type: ignore[arg-type]
+            fileobj=fileobj,
             **kwargs,
         )
 
@@ -1010,17 +1038,18 @@ class _BytesZipFile(_BufferedWriter):
         file: FilePath | ReadBuffer[bytes] | WriteBuffer[bytes],
         mode: str,
         archive_name: str | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         super().__init__()
         mode = mode.replace("b", "")
         self.archive_name = archive_name
 
         kwargs.setdefault("compression", zipfile.ZIP_DEFLATED)
-        # error: Argument 1 to "ZipFile" has incompatible type "Union[
-        # Union[str, PathLike[str]], ReadBuffer[bytes], WriteBuffer[bytes]]";
-        # expected "Union[Union[str, PathLike[str]], IO[bytes]]"
-        self.buffer = zipfile.ZipFile(file, mode, **kwargs)  # type: ignore[arg-type]
+        # error: Incompatible types in assignment (expression has type "ZipFile",
+        # base class "_BufferedWriter" defined the type as "BytesIO")
+        self.buffer: zipfile.ZipFile = zipfile.ZipFile(  # type: ignore[assignment]
+            file, mode, **kwargs
+        )
 
     def infer_filename(self) -> str | None:
         """
@@ -1050,13 +1079,12 @@ class _IOWrapper:
     def __init__(self, buffer: BaseBuffer) -> None:
         self.buffer = buffer
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, name: str) -> Any:
         return getattr(self.buffer, name)
 
     def readable(self) -> bool:
         if hasattr(self.buffer, "readable"):
-            # error: "BaseBuffer" has no attribute "readable"
-            return self.buffer.readable()  # type: ignore[attr-defined]
+            return self.buffer.readable()
         return True
 
     def seekable(self) -> bool:
@@ -1066,8 +1094,7 @@ class _IOWrapper:
 
     def writable(self) -> bool:
         if hasattr(self.buffer, "writable"):
-            # error: "BaseBuffer" has no attribute "writable"
-            return self.buffer.writable()  # type: ignore[attr-defined]
+            return self.buffer.writable()
         return True
 
 
@@ -1083,7 +1110,7 @@ class _BytesIOWrapper:
         # overflow to the front of the bytestring the next time reading is performed
         self.overflow = b""
 
-    def __getattr__(self, attr: str):
+    def __getattr__(self, attr: str) -> Any:
         return getattr(self.buffer, attr)
 
     def read(self, n: int | None = -1) -> bytes:
@@ -1109,6 +1136,9 @@ def _maybe_memory_map(
     if not memory_map:
         return handle, memory_map, handles
 
+    # mmap used by only read_csv
+    handle = cast(ReadCsvBuffer, handle)
+
     # need to open the file first
     if isinstance(handle, str):
         handle = open(handle, "rb")
@@ -1120,7 +1150,9 @@ def _maybe_memory_map(
         # expected "BaseBuffer"
         wrapped = _IOWrapper(
             mmap.mmap(
-                handle.fileno(), 0, access=mmap.ACCESS_READ  # type: ignore[arg-type]
+                handle.fileno(),
+                0,
+                access=mmap.ACCESS_READ,  # type: ignore[arg-type]
             )
         )
     finally:
@@ -1182,3 +1214,71 @@ def _get_binary_io_classes() -> tuple[type, ...]:
             binary_classes += (type(reader),)
 
     return binary_classes
+
+
+def is_potential_multi_index(
+    columns: Sequence[Hashable] | MultiIndex,
+    index_col: bool | Sequence[int] | None = None,
+) -> bool:
+    """
+    Check whether or not the `columns` parameter
+    could be converted into a MultiIndex.
+
+    Parameters
+    ----------
+    columns : array-like
+        Object which may or may not be convertible into a MultiIndex
+    index_col : None, bool or list, optional
+        Column or columns to use as the (possibly hierarchical) index
+
+    Returns
+    -------
+    bool : Whether or not columns could become a MultiIndex
+    """
+    if index_col is None or isinstance(index_col, bool):
+        index_columns = set()
+    else:
+        index_columns = set(index_col)
+
+    return bool(
+        len(columns)
+        and not isinstance(columns, ABCMultiIndex)
+        and all(isinstance(c, tuple) for c in columns if c not in index_columns)
+    )
+
+
+def dedup_names(
+    names: Sequence[Hashable], is_potential_multiindex: bool
+) -> Sequence[Hashable]:
+    """
+    Rename column names if duplicates exist.
+
+    Currently the renaming is done by appending a period and an autonumeric,
+    but a custom pattern may be supported in the future.
+
+    Examples
+    --------
+    >>> dedup_names(["x", "y", "x", "x"], is_potential_multiindex=False)
+    ['x', 'y', 'x.1', 'x.2']
+    """
+    names = list(names)  # so we can index
+    counts: DefaultDict[Hashable, int] = defaultdict(int)
+
+    for i, col in enumerate(names):
+        cur_count = counts[col]
+
+        while cur_count > 0:
+            counts[col] = cur_count + 1
+
+            if is_potential_multiindex:
+                # for mypy
+                assert isinstance(col, tuple)
+                col = col[:-1] + (f"{col[-1]}.{cur_count}",)
+            else:
+                col = f"{col}.{cur_count}"
+            cur_count = counts[col]
+
+        names[i] = col
+        counts[col] = cur_count + 1
+
+    return names

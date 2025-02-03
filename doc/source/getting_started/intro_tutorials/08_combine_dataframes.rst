@@ -9,15 +9,15 @@
 .. raw:: html
 
     <div class="card gs-data">
-        <div class="card-header">
+        <div class="card-header gs-data-header">
             <div class="gs-data-title">
                 Data used for this tutorial:
             </div>
         </div>
         <ul class="list-group list-group-flush">
-            <li class="list-group-item">
-                <div data-toggle="collapse" href="#collapsedata" role="button" aria-expanded="false" aria-controls="collapsedata">
-                    <span class="badge badge-dark">Air quality Nitrate data</span>
+            <li class="list-group-item gs-data-list">
+                <div data-bs-toggle="collapse" href="#collapsedata" role="button" aria-expanded="false" aria-controls="collapsedata">
+                    <span class="badge bg-secondary">Air quality Nitrate data</span>
                 </div>
                 <div class="collapse" id="collapsedata">
                     <div class="card-body">
@@ -49,9 +49,9 @@ Westminster* in respectively Paris, Antwerp and London.
 .. raw:: html
 
         </li>
-        <li class="list-group-item">
-            <div data-toggle="collapse" href="#collapsedata2" role="button" aria-expanded="false" aria-controls="collapsedata2">
-                <span class="badge badge-dark">Air quality Particulate matter data</span>
+        <li class="list-group-item gs-data-list">
+            <div data-bs-toggle="collapse" href="#collapsedata2" role="button" aria-expanded="false" aria-controls="collapsedata2">
+                <span class="badge bg-secondary">Air quality Particulate matter data</span>
             </div>
             <div class="collapse" id="collapsedata2">
                 <div class="card-body">
@@ -137,7 +137,7 @@ Hence, the resulting table has 3178 = 1110 + 2068 rows.
     Most operations like concatenation or summary statistics are by default
     across rows (axis 0), but can be applied across columns as well.
 
-Sorting the table on the datetime information illustrates also the
+Sorting the table on the datetime information also illustrates the
 combination of both tables, with the ``parameter`` column defining the
 origin of the table (either ``no2`` from table ``air_quality_no2`` or
 ``pm25`` from table ``air_quality_pm25``):
@@ -271,7 +271,7 @@ Add the parameters' full description and name, provided by the parameters metada
 
 Compared to the previous example, there is no common column name.
 However, the ``parameter`` column in the ``air_quality`` table and the
-``id`` column in the ``air_quality_parameters_name`` both provide the
+``id`` column in the ``air_quality_parameters`` table both provide the
 measured variable in a common format. The ``left_on`` and ``right_on``
 arguments are used here (instead of just ``on``) to make the link
 between the two tables.
@@ -286,7 +286,7 @@ between the two tables.
     <div class="d-flex flex-row gs-torefguide">
         <span class="badge badge-info">To user guide</span>
 
-pandas supports also inner, outer, and right joins.
+pandas also supports inner, outer, and right joins.
 More information on join/merge of tables is provided in the user guide section on
 :ref:`database style merging of tables <merging.join>`. Or have a look at the
 :ref:`comparison with SQL<compare_with_sql.join>` page.
@@ -300,7 +300,7 @@ More information on join/merge of tables is provided in the user guide section o
     <div class="shadow gs-callout gs-callout-remember">
         <h4>REMEMBER</h4>
 
--  Multiple tables can be concatenated both column-wise and row-wise using
+-  Multiple tables can be concatenated column-wise or row-wise using
    the ``concat`` function.
 -  For database-like merging/joining of tables, use the ``merge``
    function.

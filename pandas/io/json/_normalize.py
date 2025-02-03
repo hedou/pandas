@@ -8,22 +8,29 @@ from collections import (
 )
 import copy
 from typing import (
+    TYPE_CHECKING,
     Any,
     DefaultDict,
-    Iterable,
+    overload,
 )
 
 import numpy as np
 
 from pandas._libs.writers import convert_json_to_lines
-from pandas._typing import (
-    IgnoreRaise,
-    Scalar,
-)
-from pandas.util._decorators import deprecate
 
 import pandas as pd
-from pandas import DataFrame
+from pandas import (
+    DataFrame,
+    Series,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from pandas._typing import (
+        IgnoreRaise,
+        Scalar,
+    )
 
 
 def convert_to_line_delimits(s: str) -> str:
@@ -39,13 +46,33 @@ def convert_to_line_delimits(s: str) -> str:
     return convert_json_to_lines(s)
 
 
+@overload
 def nested_to_record(
-    ds,
+    ds: dict,
+    prefix: str = ...,
+    sep: str = ...,
+    level: int = ...,
+    max_level: int | None = ...,
+) -> dict[str, Any]: ...
+
+
+@overload
+def nested_to_record(
+    ds: list[dict],
+    prefix: str = ...,
+    sep: str = ...,
+    level: int = ...,
+    max_level: int | None = ...,
+) -> list[dict[str, Any]]: ...
+
+
+def nested_to_record(
+    ds: dict | list[dict],
     prefix: str = "",
     sep: str = ".",
     level: int = 0,
     max_level: int | None = None,
-):
+) -> dict[str, Any] | list[dict[str, Any]]:
     """
     A simplified json_normalize
 
@@ -64,8 +91,6 @@ def nested_to_record(
 
     max_level: int, optional, default: None
         The max depth to normalize.
-
-        .. versionadded:: 0.25.0
 
     Returns
     -------
@@ -112,9 +137,9 @@ def nested_to_record(
                     v = new_d.pop(k)
                     new_d[newkey] = v
                 continue
-            else:
-                v = new_d.pop(k)
-                new_d.update(nested_to_record(v, newkey, sep, level + 1, max_level))
+
+            v = new_d.pop(k)
+            new_d.update(nested_to_record(v, newkey, sep, level + 1, max_level))
         new_ds.append(new_d)
 
     if singleton:
@@ -148,13 +173,13 @@ def _normalise_json(
     if isinstance(data, dict):
         for key, value in data.items():
             new_key = f"{key_string}{separator}{key}"
+
+            if not key_string:
+                new_key = new_key.removeprefix(separator)
+
             _normalise_json(
                 data=value,
-                # to avoid adding the separator to the start of every key
-                # GH#43831 avoid adding key if key_string blank
-                key_string=new_key
-                if new_key[: len(separator)] != separator
-                else new_key[len(separator) :],
+                key_string=new_key,
                 normalized_dict=normalized_dict,
                 separator=separator,
             )
@@ -241,8 +266,8 @@ def _simple_json_normalize(
     return normalised_json_object
 
 
-def _json_normalize(
-    data: dict | list[dict],
+def json_normalize(
+    data: dict | list[dict] | Series,
     record_path: str | list | None = None,
     meta: str | list[str | list[str]] | None = None,
     meta_prefix: str | None = None,
@@ -254,9 +279,13 @@ def _json_normalize(
     """
     Normalize semi-structured JSON data into a flat table.
 
+    This method is designed to transform semi-structured JSON data, such as nested
+    dictionaries or lists, into a flat table. This is particularly useful when
+    handling JSON-like data structures that contain deeply nested fields.
+
     Parameters
     ----------
-    data : dict or list of dicts
+    data : dict, list of dicts, or Series of dicts
         Unserialized JSON objects.
     record_path : str or list of str, default None
         Path in each object to list of records. If not passed, data will be
@@ -264,10 +293,10 @@ def _json_normalize(
     meta : list of paths (str or list of str), default None
         Fields to use as metadata for each record in resulting table.
     meta_prefix : str, default None
-        If True, prefix records with dotted (?) path, e.g. foo.bar.field if
+        If True, prefix records with dotted path, e.g. foo.bar.field if
         meta is ['foo', 'bar'].
     record_prefix : str, default None
-        If True, prefix records with dotted (?) path, e.g. foo.bar.field if
+        If True, prefix records with dotted path, e.g. foo.bar.field if
         path to records is ['foo', 'bar'].
     errors : {'raise', 'ignore'}, default 'raise'
         Configures error handling.
@@ -283,12 +312,15 @@ def _json_normalize(
         Max number of levels(depth of dict) to normalize.
         if None, normalizes all levels.
 
-        .. versionadded:: 0.25.0
-
     Returns
     -------
-    frame : DataFrame
-    Normalize semi-structured JSON data into a flat table.
+    DataFrame
+        The normalized data, represented as a pandas DataFrame.
+
+    See Also
+    --------
+    DataFrame : Two-dimensional, size-mutable, potentially heterogeneous tabular data.
+    Series : One-dimensional ndarray with axis labels (including time series).
 
     Examples
     --------
@@ -342,6 +374,26 @@ def _json_normalize(
     0  1.0   Cole Volk             130              60
     1  NaN    Mark Reg             130              60
     2  2.0  Faye Raker             130              60
+
+    >>> data = [
+    ...     {
+    ...         "id": 1,
+    ...         "name": "Cole Volk",
+    ...         "fitness": {"height": 130, "weight": 60},
+    ...     },
+    ...     {"name": "Mark Reg", "fitness": {"height": 130, "weight": 60}},
+    ...     {
+    ...         "id": 2,
+    ...         "name": "Faye Raker",
+    ...         "fitness": {"height": 130, "weight": 60},
+    ...     },
+    ... ]
+    >>> series = pd.Series(data, index=pd.Index(["a", "b", "c"]))
+    >>> pd.json_normalize(series)
+        id        name  fitness.height  fitness.weight
+    a  1.0   Cole Volk             130              60
+    b  NaN    Mark Reg             130              60
+    c  2.0  Faye Raker             130              60
 
     >>> data = [
     ...     {
@@ -403,7 +455,7 @@ def _json_normalize(
                     f"Key {e} not found. If specifying a record_path, all elements of "
                     f"data should have the path."
                 ) from e
-            elif errors == "ignore":
+            if errors == "ignore":
                 return np.nan
             else:
                 raise KeyError(
@@ -428,10 +480,15 @@ def _json_normalize(
                 result = []
             else:
                 raise TypeError(
-                    f"{js} has non list value {result} for path {spec}. "
-                    "Must be list or null."
+                    f"Path must contain list or null, "
+                    f"but got {type(result).__name__} at {spec!r}"
                 )
         return result
+
+    if isinstance(data, Series):
+        index = data.index
+    else:
+        index = None
 
     if isinstance(data, list) and not data:
         return DataFrame()
@@ -455,7 +512,7 @@ def _json_normalize(
         and record_prefix is None
         and max_level is None
     ):
-        return DataFrame(_simple_json_normalize(data, sep=sep))
+        return DataFrame(_simple_json_normalize(data, sep=sep), index=index)
 
     if record_path is None:
         if any([isinstance(x, dict) for x in y.values()] for y in data):
@@ -467,7 +524,7 @@ def _json_normalize(
             # TODO: handle record value which are lists, at least error
             #       reasonably
             data = nested_to_record(data, sep=sep, max_level=max_level)
-        return DataFrame(data)
+        return DataFrame(data, index=index)
     elif not isinstance(record_path, list):
         record_path = [record_path]
 
@@ -485,7 +542,7 @@ def _json_normalize(
     meta_vals: DefaultDict = defaultdict(list)
     meta_keys = [sep.join(val) for val in _meta]
 
-    def _recursive_extract(data, path, seen_meta, level=0) -> None:
+    def _recursive_extract(data, path, seen_meta, level: int = 0) -> None:
         if isinstance(data, dict):
             data = [data]
         if len(path) > 1:
@@ -531,10 +588,17 @@ def _json_normalize(
             raise ValueError(
                 f"Conflicting metadata name {k}, need distinguishing prefix "
             )
-        result[k] = np.array(v, dtype=object).repeat(lengths)
+        # GH 37782
+
+        values = np.array(v, dtype=object)
+
+        if values.ndim > 1:
+            # GH 37782
+            values = np.empty((len(v),), dtype=object)
+            for i, val in enumerate(v):
+                values[i] = val
+
+        result[k] = values.repeat(lengths)
+    if index is not None:
+        result.index = index.repeat(lengths)
     return result
-
-
-json_normalize = deprecate(
-    "pandas.io.json.json_normalize", _json_normalize, "1.0.0", "pandas.json_normalize"
-)

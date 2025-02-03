@@ -8,9 +8,7 @@
 	// Use 'settings' to set *default* container specific settings.json values on container create.
 	// You can edit these settings after create using File > Preferences > Settings > Remote.
 	"settings": {
-		"terminal.integrated.shell.linux": "/bin/bash",
-		"python.condaPath": "/opt/conda/bin/conda",
-		"python.pythonPath": "/opt/conda/bin/python",
+		"python.pythonPath": "/usr/local/bin/python",
 		"python.formatting.provider": "black",
 		"python.linting.enabled": true,
 		"python.linting.flake8Enabled": true,

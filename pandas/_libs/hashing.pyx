@@ -23,7 +23,7 @@ from pandas._libs.util cimport is_nan
 
 @cython.boundscheck(False)
 def hash_object_array(
-    ndarray[object] arr, str key, str encoding="utf8"
+    ndarray[object, ndim=1] arr, str key, str encoding="utf8"
 ) -> np.ndarray[np.uint64]:
     """
     Parameters
@@ -55,7 +55,7 @@ def hash_object_array(
         char **vecs
         char *cdata
         object val
-        list datas = []
+        list data_list = []
 
     k = <bytes>key.encode(encoding)
     kb = <uint8_t *>k
@@ -68,7 +68,11 @@ def hash_object_array(
 
     # create an array of bytes
     vecs = <char **>malloc(n * sizeof(char *))
+    if vecs is NULL:
+        raise MemoryError()
     lens = <uint64_t*>malloc(n * sizeof(uint64_t))
+    if lens is NULL:
+        raise MemoryError()
 
     for i in range(n):
         val = arr[i]
@@ -97,7 +101,7 @@ def hash_object_array(
 
         # keep the references alive through the end of the
         # function
-        datas.append(data)
+        data_list.append(data)
         vecs[i] = cdata
 
     result = np.empty(n, dtype=np.uint64)
@@ -110,11 +114,11 @@ def hash_object_array(
     return result.base  # .base to retrieve underlying np.ndarray
 
 
-cdef inline uint64_t _rotl(uint64_t x, uint64_t b) nogil:
+cdef uint64_t _rotl(uint64_t x, uint64_t b) noexcept nogil:
     return (x << b) | (x >> (64 - b))
 
 
-cdef inline uint64_t u8to64_le(uint8_t* p) nogil:
+cdef uint64_t u8to64_le(uint8_t* p) noexcept nogil:
     return (<uint64_t>p[0] |
             <uint64_t>p[1] << 8 |
             <uint64_t>p[2] << 16 |
@@ -125,8 +129,8 @@ cdef inline uint64_t u8to64_le(uint8_t* p) nogil:
             <uint64_t>p[7] << 56)
 
 
-cdef inline void _sipround(uint64_t* v0, uint64_t* v1,
-                           uint64_t* v2, uint64_t* v3) nogil:
+cdef void _sipround(uint64_t* v0, uint64_t* v1,
+                    uint64_t* v2, uint64_t* v3) noexcept nogil:
     v0[0] += v1[0]
     v1[0] = _rotl(v1[0], 13)
     v1[0] ^= v0[0]
@@ -145,7 +149,7 @@ cdef inline void _sipround(uint64_t* v0, uint64_t* v1,
 
 @cython.cdivision(True)
 cdef uint64_t low_level_siphash(uint8_t* data, size_t datalen,
-                                uint8_t* key) nogil:
+                                uint8_t* key) noexcept nogil:
     cdef uint64_t v0 = 0x736f6d6570736575ULL
     cdef uint64_t v1 = 0x646f72616e646f6dULL
     cdef uint64_t v2 = 0x6c7967656e657261ULL
